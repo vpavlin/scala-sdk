@@ -1,0 +1,29 @@
+{
+  "name": "scala-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scala's shared-calendar engine for React Native apps: event-log fold, storage, sync over Loam, encryption, identities, invites",
+  "license": "MIT OR Apache-2.0",
+  "main": "calendar.ts",
+  "peerDependencies": {
+    "expo-crypto": "~57.0.0",
+    "expo-secure-store": "~57.0.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "react-native": "0.86.0",
+    "base64-js": "^1.5.1",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
+    "@noble/ciphers": "^2.2.0",
+    "react": "19.2.3",
+    "keycard-sdk": "^3.1.9",
+    "react-native-keycard": "^1.0.4"
+  },
+  "peerDependenciesMeta": {
+    "keycard-sdk": {
+      "optional": true
+    },
+    "react-native-keycard": {
+      "optional": true
+    }
+  }
+}

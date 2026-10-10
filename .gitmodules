@@ -1,0 +1,3 @@
+[submodule "loam-transport-pkg"]
+	path = loam-transport-pkg
+	url = https://github.com/vpavlin/loam-transport
