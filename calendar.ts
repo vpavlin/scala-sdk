@@ -718,6 +718,9 @@ function ensurePeriodicReconcile(): void {
   appStateSub = AppState.addEventListener("change", (s) => { if (s === "active") reconcileAll().catch(() => {}); });
 }
 
+// Apps other than Scala name themselves to the shared Loam node before starting sync.
+export { setAppId } from "./scala-sync";
+
 export async function startSyncing(shared?: boolean, onStatus?: (s: string) => void): Promise<void> {
   const useShared = shared ?? (await getSharedNode());
   const regs = await store.getRegistry();

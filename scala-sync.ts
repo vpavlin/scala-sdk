@@ -83,6 +83,11 @@ function adapterReceive(topic: string, candidates: Uint8Array[]): boolean {
 
 /** Bring the node up on every shared calendar's topic. Idempotent. Call after
  *  the calendar list (with keys) is known; use joinCalendar() for later adds. */
+// The id this app registers with the device's shared Loam node (shown in Loam's approval list).
+// Apps built on the SDK set their own before starting sync; Scala keeps the default.
+let appId = "scala";
+export function setAppId(id: string): void { if (id) appId = id; }
+
 export async function startSync(opts: {
   deviceId: string;
   calendars: { id: string; encryptionKey: string }[];
@@ -95,7 +100,7 @@ export async function startSync(opts: {
     .filter((c) => c.encryptionKey)
     .map((c) => ({ calendarId: c.id, encryptionKey: c.encryptionKey, topic: topicForCalendar(c.id) }));
   (transport as { preferServiceBackend?: (on: boolean, appId: string) => void })
-    .preferServiceBackend?.(!!opts.shared, "scala");
+    .preferServiceBackend?.(!!opts.shared, appId);
   if (transport.getCtx()) {
     // already up — just join any new topics
     await transport.join(routes.map((r) => r.topic));
