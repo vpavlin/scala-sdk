@@ -320,6 +320,7 @@ export async function createCalendar(
 // this forgets our local copy + membership (registry + event log) so it stops syncing here.
 export async function deleteCalendar(calId: string): Promise<void> {
   await store.removeCalendar(calId);
+  await sync.leaveCalendar(calId);
   notifyChange();
 }
 
@@ -386,18 +387,15 @@ export async function getEventHistory(
 // fills the delta after `pointer.coversUpToHlc`. RBSR stays the guarantee — every event is re-verified,
 // so a bad/stale snapshotter can only omit (healed by sync) or forge (dropped). Returns #new events.
 //
-// NOTE: the phone's Storage client is FETCH-ONLY, so writing snapshots is the hub/desktop's job
-// (C++ core + storage_module); this is the reader half. Needs a reachable Codex node + a snapshot
-// pointer (a `snapshot {cid,epoch,coversUpToHlc,count}` control message on the channel) — both are the
-// remaining live wiring, so this runs only once Storage is connected and a pointer has arrived.
-export async function bootstrapFromSnapshot(calId: string, pointer: snapshot.SnapshotPointer): Promise<number> {
+// NOTE: the phone fetches through Loam's Storage (no node of its own), so writing snapshots is the
+// hub/desktop's job (C++ core + storage_module); this is the reader half. `sprs`: Storage nodes known
+// to hold the snapshot (the invite's hub), dialled first.
+export async function bootstrapFromSnapshot(calId: string, pointer: snapshot.SnapshotPointer, sprs: string[] = []): Promise<number> {
   const reg = await store.getReg(calId);
   if (!reg) throw new Error("calendar is not registered on this device");
-  if (!storage.available()) throw new Error("Logos Storage is not in this build");
   const dir = await storage.filesDir();
   const path = `${dir}/snap-${pointer.cid}.bin`;
-  await storage.fetch(pointer.cid);            // pull from the network if not held locally
-  await storage.downloadToFile(pointer.cid, path);
+  await storage.fetchToFile(pointer.cid, path, { sprs, idleLimitMs: 180_000 });
   const sealed = toByteArray(await storage.readFileB64(path)); // base64 file → bytes
   const clock = await ensureClock();
   const { ingested } = await snapshot.ingestSnapshot(sealed, {
@@ -649,39 +647,19 @@ async function joinInBackground(link: string, inv: NonNullable<ReturnType<typeof
 
 async function runSnapshot(inv: NonNullable<ReturnType<typeof parseInvite>>, D: (s: string) => void): Promise<void> {
   const cid: string = inv.snap.cid;
+  if (!(await storage.available())) { D("snapshot skipped: no Loam Storage; syncing from peers"); return; }
   try {
     ToastAndroid.show(`Snapshot: fetching ${cid.slice(0, 10)}…`, ToastAndroid.SHORT);
-    D("storage init…");
-    await storage.init(inv.stor ? { "bootstrap-node": [inv.stor] } : {}); // reach the snapshot hub's Storage
-    D("storage ready; fetching snapshot…");
-    const n = await bootstrapFromSnapshot(inv.calendarId, inv.snap);
+    D("fetching snapshot through Loam…");
+    const n = await bootstrapFromSnapshot(inv.calendarId, inv.snap, inv.stor ? [inv.stor] : []);
     D(`snapshot: ${n} new events`);
     ToastAndroid.show(n ? `Snapshot: ${n} events loaded ✓` : "Snapshot: nothing new (already have these events)", ToastAndroid.LONG);
   } catch (e) {
     D(`snapshot failed: ${String(e).slice(0, 120)}`);
     ToastAndroid.show(`Snapshot failed, syncing from peers: ${String(e).slice(0, 80)}`, ToastAndroid.LONG);
-    await storageDiag(D);
+    const i = await storage.info();
+    D(i ? `loam storage: ${i.state ?? (i.running ? "running" : "idle")} · online ${i.online} · jobs ${i.jobs.length}${i.nodeError ? ` · ${i.nodeError}` : ""}` : "loam storage: no answer");
   }
-}
-
-// After a failed fetch, record what the Storage node knows (its own addresses, connections, routing
-// table) and try a direct connect to each node it knows, so the trace shows whether this app can
-// actually dial the snapshot hub. Never throws.
-async function storageDiag(D: (s: string) => void): Promise<void> {
-  const within = <T,>(p: Promise<T>, ms: number): Promise<T> =>
-    Promise.race([p, new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`timed out after ${ms / 1000}s`)), ms))]);
-  try {
-    D(`storage bootstrap nodes: ${storage.bootstrapCount()}`);
-    const d = JSON.parse(await within(storage.debug(), 10000));
-    const nodes: any[] = Array.isArray(d?.table?.nodes) ? d.table.nodes : [];
-    D(`storage self: ${(d?.addrs ?? []).join(", ") || "no addrs"} · connections ${(d?.connections ?? []).length} · table ${nodes.length}`);
-    for (const n of nodes.slice(0, 4)) {
-      const addrs: string[] = Array.isArray(n?.addresses) ? n.addresses : [];
-      D(`node …${String(n?.peerId ?? "?").slice(-8)} at ${addrs.join(", ") || "no addrs"}`);
-      try { await within(storage.connect(String(n.peerId), addrs), 15000); D("  direct connect ok"); }
-      catch (e) { D(`  direct connect failed: ${String(e).slice(0, 110)}`); }
-    }
-  } catch (e) { D(`storage debug failed: ${String(e).slice(0, 100)}`); }
 }
 
 // ── shared-node preference ──────────────────────────────────────────────────
