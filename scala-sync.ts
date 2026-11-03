@@ -130,6 +130,14 @@ export async function joinCalendar(calendarId: string, encryptionKey: string): P
   if (transport.getCtx()) await transport.join([topicForCalendar(calendarId)]);
 }
 
+/** Drop a calendar's route and unsubscribe its topic (after removing the calendar from this device),
+ *  so the node, and Loam's cache for this app, stop carrying it. */
+export async function leaveCalendar(calendarId: string): Promise<void> {
+  const i = routes.findIndex((r) => r.calendarId === calendarId);
+  if (i >= 0) routes.splice(i, 1);
+  if (transport.getCtx()) { try { await transport.leave([topicForCalendar(calendarId)]); } catch { /* best effort */ } }
+}
+
 /** Publish one CRDT event on a calendar's channel (sealed with its key). The
  *  argument is the event's JSON string (engine.eventToJson → JSON.stringify). */
 export async function sendEvent(calendarId: string, eventJson: string): Promise<void> {
