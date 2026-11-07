@@ -212,7 +212,8 @@ async function assertAuthorable(calId: string, editEventId?: string): Promise<vo
   let ok: boolean;
   if (editEventId) {
     const ev: any = (folded.events || []).find((e: any) => e && e.id === editEventId);
-    ok = isEditor || (!!ev && ev.creatorId === who); // an editor, or editing an event you authored
+    // an editor, any non-viewer on a Collaborative calendar (ADR 0019), or editing an event you authored
+    ok = isEditor || (folded.collab && role !== "viewer") || (!!ev && ev.creatorId === who);
   } else {
     ok = isEditor || (folded.open && role !== "viewer"); // add: open calendar, or an editor
   }
